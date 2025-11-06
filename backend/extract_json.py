@@ -2,6 +2,7 @@ import json
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from currency_converter import convert_invoice_to_inr
 
 # Load environment variables
 load_dotenv()
@@ -74,6 +75,9 @@ OCR OUTPUT:
         # Attempt to auto-correct if LLM added text
         fixed = content[content.find("{"): content.rfind("}") + 1]
         json_data = json.loads(fixed)
+
+    # Convert all amounts to INR and remove currency field
+    json_data = convert_invoice_to_inr(json_data)
 
     return json_data
 

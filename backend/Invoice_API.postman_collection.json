@@ -1,0 +1,102 @@
+{
+  "info": {
+    "name": "Invoice Processing API",
+    "description": "API for processing invoice PDFs and images, converting amounts to INR",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["health"]
+        },
+        "description": "Check if the API is running and healthy"
+      },
+      "response": []
+    },
+    {
+      "name": "API Root",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": [""]
+        },
+        "description": "Get API information and available endpoints"
+      },
+      "response": []
+    },
+    {
+      "name": "Process Invoice",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "temp.jpg",
+              "description": "Invoice file (PDF, JPG, PNG, TIFF, BMP)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8000/process-invoice",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["process-invoice"]
+        },
+        "description": "Upload an invoice file and get enhanced JSON data with amounts in INR"
+      },
+      "response": []
+    },
+    {
+      "name": "Process Invoice (Raw + Enhanced)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "temp.jpg",
+              "description": "Invoice file"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8000/process-invoice-raw",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["process-invoice-raw"]
+        },
+        "description": "Get both raw OCR data and enhanced data for comparison"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}

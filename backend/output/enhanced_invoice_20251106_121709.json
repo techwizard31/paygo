@@ -12,12 +12,8 @@
         "confidence": 0.966
     },
     "total_amount": {
-        "value": 702.0,
+        "value": 62232.3,
         "confidence": 0.95
-    },
-    "currency": {
-        "value": "USD",
-        "confidence": 0.8
     },
     "purchase_order": {
         "value": "X001525",
@@ -32,7 +28,7 @@
         "confidence": 0.0
     },
     "tax_amount": {
-        "value": 117.0,
+        "value": 10372.05,
         "confidence": 0.957
     }
 }
