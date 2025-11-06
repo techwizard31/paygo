@@ -143,15 +143,17 @@ export default function BalanceSheet() {
   }
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: "USD",
+      currency: "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value)
   }
 
   const formatDate = (dateString: string) => {
     if (!dateString || dateString === "nil") return "N/A"
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString("en-IN", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -169,8 +171,8 @@ export default function BalanceSheet() {
       "Vendor Name",
       "Invoice Date",
       "Due Date",
-      "Total Amount",
-      "Tax Amount",
+      "Total Amount (INR)",
+      "Tax Amount (INR)",
       "GST Number",
       "Purchase Order",
       "Status"
