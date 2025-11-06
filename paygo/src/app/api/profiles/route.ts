@@ -36,13 +36,12 @@ export async function POST(request: NextRequest) {
 
     console.log('[POST] - Validating schema with Zod...');
     // This now works because 'uuid' and 'scanned' are optional in the schema
-    const { uuid, scanned, ...rest } = ProfileSchema.parse(body);
+    const { uuid,  ...rest } = ProfileSchema.parse(body);
     console.log('[POST] - Zod validation successful.');
 
     // Construct the final object, correctly assigning defaults
     const data = {
       uuid: uuid || generateUUID(),
-      scanned: scanned || [],
       ...rest,
     };
     console.log('[POST] - Final data object to be inserted:', data);

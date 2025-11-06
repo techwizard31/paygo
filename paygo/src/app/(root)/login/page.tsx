@@ -14,6 +14,7 @@ export default function LoginPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -40,6 +41,14 @@ export default function LoginPage() {
       ...prev,
       [name]: value,
     }));
+    // Clear error for this field when user starts typing
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+    // Clear API error when user starts typing
+    if (apiError) {
+      setApiError("");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,16 +59,60 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    setApiError("");
+    
     try {
-      // Here you would typically authenticate with your API
-      console.log("Login attempt:", formData.email);
+      const response = await fetch("/api/profiles/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle validation errors from the API
+        if (response.status === 400 && data.details) {
+          const fieldErrors: Record<string, string> = {};
+          if (data.details.fieldErrors) {
+            Object.entries(data.details.fieldErrors).forEach(([key, value]) => {
+              fieldErrors[key] = (value as string[])[0];
+            });
+          }
+          setErrors(fieldErrors);
+        } else if (response.status === 401) {
+          // Invalid credentials
+          setApiError(data.error || "Invalid email or password");
+        } else {
+          setApiError(data.error || "Login failed");
+        }
+        return;
+      }
+
+      // Successful login
+      console.log("Login successful:", data);
       
-      // Mock successful login
-      setTimeout(() => {
-        router.push("/dashboard"); // Redirect to dashboard after successful login
-      }, 1500);
+      // Store user data and UUID in localStorage
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+        
+        // Store the UUID separately for easy access
+        if (data.user.uuid) {
+          localStorage.setItem("user_uuid", data.user.uuid);
+          console.log("User UUID stored:", data.user.uuid);
+        }
+      }
+      
+      // Redirect to dashboard
+      router.push("/");
     } catch (error) {
       console.error("Login error:", error);
+      setApiError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -77,6 +130,12 @@ export default function LoginPage() {
           </p>
         </div>
         
+        {apiError && (
+          <div className="mb-6 p-4 bg-red-900/50 border border-red-700 rounded-lg">
+            <p className="text-sm text-red-300">{apiError}</p>
+          </div>
+        )}
+
         <form className="space-y-8" onSubmit={handleSubmit}>
           {/* Email */}
           <div>
@@ -143,7 +202,7 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className={`w-full flex justify-center py-3 px-4 border border-transparent text-lg font-medium rounded-lg text-white transition-colors ${
-                loading ? "bg-indigo-600 opacity-70" : "bg-indigo-600 hover:bg-indigo-700"
+                loading ? "bg-indigo-600 opacity-70 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg`}
             >
               {loading ? "Signing in..." : "Sign in"}

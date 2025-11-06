@@ -7,7 +7,7 @@ export const ProfileSchema = z.object({
   uuid: z.string().uuid().optional(),
   name: z.string().min(1, 'Name required'),
   email: z.string().email('Valid email required'),
-  scanned: z.array(z.string().uuid()).optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export const MailSchema = z.object({

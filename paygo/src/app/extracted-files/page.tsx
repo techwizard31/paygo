@@ -59,11 +59,95 @@ export default function FileExtractor() {
       
       // Check due date and show toast notification if within 3 days
       checkDueDate(data)
+
+      // Save to database after successful extraction
+      await saveToDatabase(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred while processing the invoice")
       console.error("Error:", err)
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const saveToDatabase = async (data: ExtractedData) => {
+    try {
+      // Get user_uuid from localStorage
+      const userUuid = localStorage.getItem('user_uuid')
+      
+      if (!userUuid) {
+        toast.error('User UUID not found in local storage. Please log in again.', {
+          duration: 5000,
+          position: "top-center",
+          style: {
+            background: "#ef4444",
+            color: "#fff",
+            padding: "16px",
+            borderRadius: "8px",
+          },
+        })
+        console.error('user_uuid not found in localStorage')
+        return
+      }
+
+      // Convert extracted data to the mail schema format
+      const mailData = {
+        user_uuid: userUuid,
+        scraped_data: JSON.stringify(data), // Store the entire extracted data as JSON string
+        invoice_number: data.invoice_number?.value || "N/A",
+        vendor_name: data.vendor_name?.value || "N/A",
+        invoice_date: data.invoice_date?.value || new Date().toISOString(),
+        total_amount: parseFloat(data.total_amount?.value) || 0,
+        purchase_order: data.purchase_order?.value === "nil" ? undefined : data.purchase_order?.value,
+        due_date: data.due_date?.value === "nil" ? undefined : data.due_date?.value,
+        gst_number: data.gst_number?.value === "nil" ? undefined : data.gst_number?.value,
+        tax_amount: data.tax_amount?.value ? parseFloat(data.tax_amount.value) : undefined,
+      }
+
+      console.log('[FileExtractor] - Sending mail data to database:', mailData)
+
+      const dbResponse = await fetch('/api/mails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mailData),
+      })
+
+      if (!dbResponse.ok) {
+        const errorData = await dbResponse.json()
+        throw new Error(errorData.error || 'Failed to save to database')
+      }
+
+      const savedMail = await dbResponse.json()
+      console.log('[FileExtractor] - Successfully saved to database:', savedMail)
+
+      toast.success('Invoice data saved to database successfully!', {
+        duration: 4000,
+        position: "top-center",
+        style: {
+          background: "#10b981",
+          color: "#fff",
+          padding: "16px",
+          borderRadius: "8px",
+        },
+        icon: "✓",
+      })
+    } catch (err) {
+      console.error('[FileExtractor] - Error saving to database:', err)
+      toast.error(
+        `Failed to save to database: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        {
+          duration: 6000,
+          position: "top-center",
+          style: {
+            background: "#ef4444",
+            color: "#fff",
+            padding: "16px",
+            borderRadius: "8px",
+          },
+        }
+      )
     }
   }
 
