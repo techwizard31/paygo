@@ -88,3 +88,4 @@ logs
 .cache/
 .eslintcache
 .stylelintcache
+/src/generated/prisma
