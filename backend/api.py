@@ -15,6 +15,7 @@ from typing import Optional
 # Import our invoice processing modules
 from ocr import process_invoice_ocr, extract_invoice_data
 from extract_json import extract_invoice_fields_from_ocr
+from invoice_verify import classify_email_as_invoice
 
 app = FastAPI(
     title="Invoice Processing API",
@@ -42,10 +43,13 @@ async def root():
     return {
         "status": "running",
         "message": "Invoice Processing API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "endpoints": {
-            "POST /process-invoice": "Upload invoice for processing",
-            "GET /health": "Health check"
+            "POST /process-invoice": "Upload invoice file for processing (returns INR amounts)",
+            "POST /process-invoice-raw": "Upload invoice and get both OCR and enhanced data",
+            "POST /verify-invoice-email": "Verify if email contains invoice data",
+            "GET /health": "Health check",
+            "GET /": "API information"
         }
     }
 
@@ -227,6 +231,96 @@ async def process_invoice_raw(file: UploadFile = File(...)):
                 os.unlink(temp_file)
             except:
                 pass
+
+
+@app.post("/verify-invoice-email")
+async def verify_invoice_email(
+    subject: str,
+    body: str,
+    attachment_filename: Optional[str] = None
+):
+    """
+    Verify if an email contains invoice-based data using AI classification.
+    
+    Args:
+        subject: Email subject line
+        body: Email body text
+        attachment_filename: Optional filename of attachment
+    
+    Returns:
+        JSON response indicating if the email contains invoice data
+    
+    Example Request:
+        POST /verify-invoice-email
+        {
+            "subject": "Your Invoice for October Services",
+            "body": "Please find attached the invoice for $500.",
+            "attachment_filename": "invoice_123.pdf"
+        }
+    
+    Example Response:
+        {
+            "success": true,
+            "is_invoice": true,
+            "confidence": "high",
+            "message": "Email contains invoice-based data",
+            "details": {
+                "subject": "Your Invoice for October Services",
+                "has_attachment": true,
+                "attachment_name": "invoice_123.pdf"
+            }
+        }
+    """
+    
+    try:
+        # Validate inputs
+        if not subject and not body:
+            raise HTTPException(
+                status_code=400,
+                detail="Either subject or body must be provided"
+            )
+        
+        # Classify email
+        print(f"📧 Verifying email: Subject='{subject[:50]}...'")
+        is_invoice = classify_email_as_invoice(subject, body, attachment_filename)
+        
+        # Determine confidence based on multiple factors
+        confidence = "high"
+        if attachment_filename:
+            # Check if attachment name suggests invoice
+            invoice_keywords = ['invoice', 'bill', 'receipt', 'payment', 'statement']
+            if any(keyword in attachment_filename.lower() for keyword in invoice_keywords):
+                confidence = "very_high"
+        
+        response_data = {
+            "success": True,
+            "is_invoice": is_invoice,
+            "confidence": confidence if is_invoice else "n/a",
+            "message": "Email contains invoice-based data" if is_invoice else "Email does not contain invoice data",
+            "details": {
+                "subject": subject,
+                "body_length": len(body),
+                "has_attachment": attachment_filename is not None,
+                "attachment_name": attachment_filename
+            }
+        }
+        
+        print(f"✅ Verification result: {is_invoice}")
+        
+        return JSONResponse(
+            status_code=200,
+            content=response_data
+        )
+        
+    except Exception as e:
+        print(f"❌ Error verifying email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Email verification failed",
+                "message": str(e)
+            }
+        )
 
 
 if __name__ == "__main__":

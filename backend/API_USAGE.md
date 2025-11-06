@@ -47,6 +47,23 @@ Content-Type: multipart/form-data
 - `file` (required): Invoice file (PDF, JPG, PNG, TIFF, BMP)
 - Max size: 10MB
 
+---
+
+### 3. Verify Invoice Email (NEW)
+```http
+POST /verify-invoice-email
+```
+
+**Query Parameters:**
+- `subject` (required): Email subject line
+- `body` (required): Email body text
+- `attachment_filename` (optional): Attachment filename
+
+**Example:**
+```http
+POST /verify-invoice-email?subject=Your%20Invoice&body=Please%20find%20attached&attachment_filename=invoice.pdf
+```
+
 **Response:**
 ```json
 {
@@ -96,7 +113,25 @@ Content-Type: multipart/form-data
 
 ---
 
-### 3. Process Invoice (Raw OCR + Enhanced)
+**Response:**
+```json
+{
+  "success": true,
+  "is_invoice": true,
+  "confidence": "high",
+  "message": "Email contains invoice-based data",
+  "details": {
+    "subject": "Your Invoice for October Services",
+    "body_length": 58,
+    "has_attachment": true,
+    "attachment_name": "invoice_123.pdf"
+  }
+}
+```
+
+---
+
+### 4. Process Invoice (Raw OCR + Enhanced)
 ```http
 POST /process-invoice-raw
 Content-Type: multipart/form-data

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Email Verification Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+            width: 100%;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .result.active {
+            display: block;
+        }
+        
+        .result.invoice {
+            background: #d3f9d8;
+            border: 2px solid #51cf66;
+        }
+        
+        .result.not-invoice {
+            background: #fff3bf;
+            border: 2px solid #fcc419;
+        }
+        
+        .result-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .result-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .result-details {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .detail-value {
+            color: #212529;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .preset-btn {
+            padding: 8px 16px;
+            background: #e9ecef;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        .preset-btn:hover {
+            background: #dee2e6;
+        }
+        
+        .error {
+            background: #fff5f5;
+            border: 2px solid #fc8181;
+            color: #c53030;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📧 Invoice Email Verification</h1>
+        <p class="subtitle">Test if an email contains invoice-based data using AI</p>
+        
+        <div class="preset-buttons">
+            <button class="preset-btn" onclick="loadPreset('invoice')">📄 Invoice Email</button>
+            <button class="preset-btn" onclick="loadPreset('bill')">💳 Bill Email</button>
+            <button class="preset-btn" onclick="loadPreset('receipt')">🧾 Receipt Email</button>
+            <button class="preset-btn" onclick="loadPreset('regular')">📝 Regular Email</button>
+            <button class="preset-btn" onclick="loadPreset('clear')">🔄 Clear</button>
+        </div>
+        
+        <form id="verifyForm">
+            <div class="form-group">
+                <label for="subject">Email Subject *</label>
+                <input type="text" id="subject" placeholder="e.g., Your Invoice for October Services" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="body">Email Body *</label>
+                <textarea id="body" placeholder="e.g., Please find attached the invoice for $500. Payment due in 30 days." required></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="attachment">Attachment Filename (Optional)</label>
+                <input type="text" id="attachment" placeholder="e.g., invoice_123.pdf">
+            </div>
+            
+            <button type="submit" id="verifyBtn">Verify Email</button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing email with AI...</p>
+        </div>
+        
+        <div class="result" id="result">
+            <div class="result-icon" id="resultIcon"></div>
+            <div class="result-title" id="resultTitle"></div>
+            <p id="resultMessage"></p>
+            
+            <div class="result-details">
+                <div class="detail-row">
+                    <span class="detail-label">Classification:</span>
+                    <span class="detail-value" id="classification"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Confidence:</span>
+                    <span class="detail-value" id="confidence"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Has Attachment:</span>
+                    <span class="detail-value" id="hasAttachment"></span>
+                </div>
+                <div class="detail-row" id="attachmentRow" style="display: none;">
+                    <span class="detail-label">Attachment:</span>
+                    <span class="detail-value" id="attachmentName"></span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="error" id="error">
+            <h3>❌ Error</h3>
+            <p id="errorMessage"></p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const form = document.getElementById('verifyForm');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const error = document.getElementById('error');
+        
+        const presets = {
+            invoice: {
+                subject: 'Your Invoice for October Services',
+                body: 'Please find attached the invoice for $500. Payment due in 30 days.',
+                attachment: 'invoice_123.pdf'
+            },
+            bill: {
+                subject: 'Monthly Bill - November 2025',
+                body: 'Your bill for this month is $250. Please pay by end of month.',
+                attachment: 'bill_november.pdf'
+            },
+            receipt: {
+                subject: 'Receipt for your purchase',
+                body: 'Thank you for your purchase of $100. Here is your receipt attached.',
+                attachment: 'receipt_001.pdf'
+            },
+            regular: {
+                subject: 'Meeting Tomorrow at 3 PM',
+                body: 'Hi team, don\'t forget our meeting tomorrow at 3 PM in conference room B.',
+                attachment: ''
+            }
+        };
+        
+        function loadPreset(type) {
+            if (type === 'clear') {
+                document.getElementById('subject').value = '';
+                document.getElementById('body').value = '';
+                document.getElementById('attachment').value = '';
+                result.classList.remove('active');
+                error.classList.remove('active');
+                return;
+            }
+            
+            const preset = presets[type];
+            if (preset) {
+                document.getElementById('subject').value = preset.subject;
+                document.getElementById('body').value = preset.body;
+                document.getElementById('attachment').value = preset.attachment;
+            }
+        }
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const subject = document.getElementById('subject').value;
+            const body = document.getElementById('body').value;
+            const attachment = document.getElementById('attachment').value;
+            
+            // Hide previous results
+            result.classList.remove('active');
+            error.classList.remove('active');
+            
+            // Show loading
+            loading.classList.add('active');
+            
+            try {
+                // Build URL with query parameters
+                const params = new URLSearchParams({
+                    subject: subject,
+                    body: body
+                });
+                
+                if (attachment) {
+                    params.append('attachment_filename', attachment);
+                }
+                
+                const response = await fetch(`${API_URL}/verify-invoice-email?${params}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    displayResult(data);
+                } else {
+                    showError(data.detail || 'Unknown error occurred');
+                }
+            } catch (err) {
+                showError(`Network error: ${err.message}. Make sure the API server is running.`);
+            } finally {
+                loading.classList.remove('active');
+            }
+        });
+        
+        function displayResult(data) {
+            const isInvoice = data.is_invoice;
+            
+            // Set result class
+            result.className = 'result active ' + (isInvoice ? 'invoice' : 'not-invoice');
+            
+            // Set icon and title
+            document.getElementById('resultIcon').textContent = isInvoice ? '✅' : '⚠️';
+            document.getElementById('resultTitle').textContent = 
+                isInvoice ? 'Invoice Detected!' : 'Not an Invoice';
+            document.getElementById('resultMessage').textContent = data.message;
+            
+            // Set details
+            document.getElementById('classification').textContent = 
+                isInvoice ? 'Invoice Email' : 'Regular Email';
+            document.getElementById('confidence').textContent = 
+                data.confidence.toUpperCase();
+            document.getElementById('hasAttachment').textContent = 
+                data.details.has_attachment ? 'Yes' : 'No';
+            
+            // Show attachment details if present
+            if (data.details.attachment_name) {
+                document.getElementById('attachmentRow').style.display = 'flex';
+                document.getElementById('attachmentName').textContent = 
+                    data.details.attachment_name;
+            } else {
+                document.getElementById('attachmentRow').style.display = 'none';
+            }
+        }
+        
+        function showError(message) {
+            error.classList.add('active');
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        // Check if API is running on load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                if (!response.ok) {
+                    showError('API server is not responding. Please start the server with: python api.py');
+                }
+            } catch (err) {
+                showError('Cannot connect to API server. Please start the server with: python api.py');
+            }
+        });
+    </script>
+</body>
+</html>
