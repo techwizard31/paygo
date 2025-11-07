@@ -13,8 +13,10 @@ import {
   Loader2,
   X,
   File,
+  ChevronDown,
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import * as XLSX from "xlsx"
 
 interface ExtractedDataItem {
   value: string;
@@ -32,6 +34,7 @@ export default function FileExtractor() {
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState("both") // table, charts, both
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false)
 
   const processInvoice = async (selectedFile: File) => {
     setIsProcessing(true)
@@ -157,6 +160,7 @@ export default function FileExtractor() {
     return "#ef4444"
   }
 
+  // Download as JSON
   const downloadJson = () => {
     if (!extractedData) return
     const dataStr = JSON.stringify(extractedData, null, 2)
@@ -167,6 +171,89 @@ export default function FileExtractor() {
     link.download = "extracted-invoice-data.json"
     link.click()
     URL.revokeObjectURL(url)
+    setShowDownloadMenu(false)
+  }
+
+  // Download as TXT
+  const downloadTxt = () => {
+    if (!extractedData) return
+    
+    let txtContent = "EXTRACTED INVOICE DATA\n"
+    txtContent += "=".repeat(50) + "\n\n"
+    
+    Object.entries(extractedData).forEach(([key, data]) => {
+      const fieldName = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+      txtContent += `${fieldName}:\n`
+      txtContent += `  Value: ${data.value}\n`
+      txtContent += `  Confidence: ${(data.confidence * 100).toFixed(1)}%\n\n`
+    })
+    
+    const dataBlob = new Blob([txtContent], { type: "text/plain" })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "extracted-invoice-data.txt"
+    link.click()
+    URL.revokeObjectURL(url)
+    setShowDownloadMenu(false)
+  }
+
+  // Download as CSV
+  const downloadCsv = () => {
+    if (!extractedData) return
+    
+    let csvContent = "Field Name,Extracted Value,Confidence Score (%),Status\n"
+    
+    Object.entries(extractedData).forEach(([key, data]) => {
+      const fieldName = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+      const value = data.value === "nil" ? "Not Available" : data.value
+      const confidence = (data.confidence * 100).toFixed(1)
+      const status = data.confidence >= 0.9 ? "High" : data.confidence >= 0.75 ? "Medium" : "Low"
+      
+      // Escape values that contain commas or quotes
+      const escapedValue = value.includes(',') || value.includes('"') ? `"${value.replace(/"/g, '""')}"` : value
+      
+      csvContent += `${fieldName},${escapedValue},${confidence},${status}\n`
+    })
+    
+    const dataBlob = new Blob([csvContent], { type: "text/csv" })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "extracted-invoice-data.csv"
+    link.click()
+    URL.revokeObjectURL(url)
+    setShowDownloadMenu(false)
+  }
+
+  // Download as XLSX
+  const downloadXlsx = () => {
+    if (!extractedData) return
+    
+    // Prepare data for Excel
+    const excelData = Object.entries(extractedData).map(([key, data]) => ({
+      "Field Name": key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+      "Extracted Value": data.value === "nil" ? "Not Available" : data.value,
+      "Confidence Score (%)": (data.confidence * 100).toFixed(1),
+      "Status": data.confidence >= 0.9 ? "High" : data.confidence >= 0.75 ? "Medium" : "Low"
+    }))
+    
+    // Create a new workbook and worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Extracted Data")
+    
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 25 },  // Field Name
+      { wch: 30 },  // Extracted Value
+      { wch: 20 },  // Confidence Score
+      { wch: 15 }   // Status
+    ]
+    
+    // Generate and download the file
+    XLSX.writeFile(workbook, "extracted-invoice-data.xlsx")
+    setShowDownloadMenu(false)
   }
 
   const removeFile = () => {
@@ -194,144 +281,115 @@ export default function FileExtractor() {
     const lowConfidence = confidences.filter((c) => c < 0.75).length
 
     return {
-      avgConfidence: avgConfidence.toFixed(1),
-      highConfidence,
-      mediumConfidence,
-      lowConfidence,
-      totalFields: confidences.length,
+      avg: avgConfidence.toFixed(1),
+      high: highConfidence,
+      medium: mediumConfidence,
+      low: lowConfidence,
+      total: confidences.length,
     }
   }
 
   const stats = calculateStats()
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Invoice Data Extractor</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Upload invoice files and extract structured data with AI-powered confidence scoring
-        </p>
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Invoice Data Extractor</h1>
+          <p className="text-gray-600 dark:text-gray-300">Upload and automatically extract structured data from invoices</p>
+        </div>
       </div>
 
-      {/* Upload Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Upload Card */}
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Upload Invoice</h2>
-
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors cursor-pointer"
-          >
-            <input
-              type="file"
-              onChange={handleFileChange}
-              accept=".pdf,.png,.jpg,.jpeg"
-              className="hidden"
-              id="file-upload"
-              disabled={isProcessing}
-            />
-            <label htmlFor="file-upload" className="cursor-pointer">
-              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag and
-                drop
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-500">PDF, PNG, JPG (MAX. 10MB)</p>
-            </label>
-          </div>
-
-          {isProcessing && (
-            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 rounded-lg flex items-center gap-3">
-              <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Processing invoice...</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Extracting data from your file</p>
-              </div>
-            </div>
-          )}
+      {/* File Upload Area */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-8 text-center transition-all hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-750 cursor-pointer"
+        >
+          <input
+            type="file"
+            onChange={handleFileChange}
+            accept="image/*,.pdf"
+            className="hidden"
+            id="file-upload"
+            disabled={isProcessing}
+          />
+          <label htmlFor="file-upload" className="cursor-pointer">
+            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Drop your invoice here or click to browse
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Supports PDF and image files</p>
+          </label>
 
           {file && !isProcessing && (
-            <div className="mt-4 p-4 bg-green-50 dark:bg-green-900 dark:bg-opacity-20 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{file.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {(file.size / 1024).toFixed(2)} KB • Processed successfully
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={removeFile}
-                className="p-2 hover:bg-red-100 dark:hover:bg-red-900 dark:hover:bg-opacity-30 rounded-lg transition-colors"
-              >
-                <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <div className="mt-4 inline-flex items-center bg-blue-100 dark:bg-blue-900 px-4 py-2 rounded-lg">
+              <File className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
+              <span className="text-sm font-medium text-blue-900 dark:text-blue-200">{file.name}</span>
+              <button onClick={removeFile} className="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800">
+                <X className="h-4 w-4" />
               </button>
             </div>
           )}
-
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 dark:bg-red-900 dark:bg-opacity-20 rounded-lg flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
-            </div>
-          )}
         </div>
-
-        {/* Stats Card */}
-        {stats && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Extraction Summary</h2>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500 to-green-600 p-4">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white opacity-10 rounded-full -mr-10 -mt-10"></div>
-                <div className="relative z-10">
-                  <p className="text-sm font-medium text-green-100">Avg Confidence</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.avgConfidence}%</p>
-                </div>
-              </div>
-
-              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-4">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white opacity-10 rounded-full -mr-10 -mt-10"></div>
-                <div className="relative z-10">
-                  <p className="text-sm font-medium text-blue-100">Total Fields</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.totalFields}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900 dark:bg-opacity-20 rounded-lg">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">High Confidence (≥90%)</span>
-                <span className="text-sm font-bold text-green-600 dark:text-green-400">{stats.highConfidence}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900 dark:bg-opacity-20 rounded-lg">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Medium Confidence (75-89%)</span>
-                <span className="text-sm font-bold text-yellow-600 dark:text-yellow-400">
-                  {stats.mediumConfidence}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900 dark:bg-opacity-20 rounded-lg">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Low Confidence (&lt;75%)</span>
-                <span className="text-sm font-bold text-red-600 dark:text-red-400">{stats.lowConfidence}</span>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Processing State */}
+      {isProcessing && (
+        <div className="max-w-7xl mx-auto mb-8">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-8 text-center">
+            <Loader2 className="mx-auto h-12 w-12 text-blue-600 animate-spin mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Processing Invoice...</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Extracting data from your invoice. This may take a few moments.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="max-w-7xl mx-auto mb-8">
+          <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-6">
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mr-2" />
+              <h3 className="text-lg font-medium text-red-900 dark:text-red-200">Error Processing Invoice</h3>
+            </div>
+            <p className="mt-2 text-sm text-red-700 dark:text-red-300">{error}</p>
+          </div>
+        </div>
+      )}
 
       {/* Results Section */}
       {extractedData && (
         <>
-          {/* View Controls */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1">
+          {/* Statistics Cards */}
+          {stats && (
+            <div className="max-w-7xl mx-auto mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Average Confidence</div>
+                <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.avg}%</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">High Confidence</div>
+                <div className="text-3xl font-bold text-green-600 dark:text-green-400">{stats.high}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Medium Confidence</div>
+                <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">{stats.medium}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Low Confidence</div>
+                <div className="text-3xl font-bold text-red-600 dark:text-red-400">{stats.low}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="max-w-7xl mx-auto mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setActiveView("both")}
                 className={`inline-flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -375,19 +433,59 @@ export default function FileExtractor() {
                 <Code className="h-4 w-4 mr-2" />
                 {showRawJson ? "Hide" : "Show"} JSON
               </button>
-              <button
-                onClick={downloadJson}
-                className="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download JSON
-              </button>
+              
+              {/* Download Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                  className="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </button>
+                
+                {showDownloadMenu && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={downloadJson}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      >
+                        <Code className="h-4 w-4 mr-2" />
+                        Download as JSON
+                      </button>
+                      <button
+                        onClick={downloadCsv}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      >
+                        <TableIcon className="h-4 w-4 mr-2" />
+                        Download as CSV
+                      </button>
+                      <button
+                        onClick={downloadXlsx}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Download as XLSX
+                      </button>
+                      <button
+                        onClick={downloadTxt}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      >
+                        <File className="h-4 w-4 mr-2" />
+                        Download as TXT
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Raw JSON Display */}
           {showRawJson && (
-            <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+            <div className="max-w-7xl mx-auto mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                 <Code className="h-5 w-5 mr-2" />
                 Raw JSON Data
@@ -402,7 +500,7 @@ export default function FileExtractor() {
 
           {/* Table View */}
           {(activeView === "table" || activeView === "both") && (
-            <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+            <div className="max-w-7xl mx-auto mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
               <div className="p-6 pb-4">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
                   <TableIcon className="h-5 w-5 mr-2" />
@@ -494,7 +592,7 @@ export default function FileExtractor() {
 
           {/* Charts View */}
           {(activeView === "charts" || activeView === "both") && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
+            <div className="max-w-7xl mx-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                 <BarChart3 className="h-5 w-5 mr-2" />
                 Confidence Score Visualization
@@ -537,13 +635,21 @@ export default function FileExtractor() {
 
       {/* Empty State */}
       {!extractedData && !isProcessing && (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-12 text-center">
+        <div className="max-w-7xl mx-auto rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-12 text-center">
           <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Data Extracted Yet</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Upload an invoice file to automatically extract and view structured data
           </p>
         </div>
+      )}
+
+      {/* Click outside to close download menu */}
+      {showDownloadMenu && (
+        <div
+          className="fixed inset-0 z-0"
+          onClick={() => setShowDownloadMenu(false)}
+        />
       )}
     </div>
   )
