@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Backend API Service (FastAPI)
+  invoice-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: invoice-processing-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - invoice-temp:/tmp/invoice_temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - invoice-network
+
+  # Frontend Service (Node.js)
+  invoice-frontend:
+    build:
+      context: ./paygo
+      dockerfile: Dockerfile
+    container_name: invoice-processing-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - invoice-api
+    restart: unless-stopped
+    networks:
+      - invoice-network
+
+volumes:
+  invoice-temp:
+    driver: local
+
+networks:
+  invoice-network:
+    driver: bridge
