@@ -6,11 +6,12 @@ Accepts PDF or image files and returns enhanced invoice JSON with amounts in INR
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 import tempfile
 import os
 from pathlib import Path
 import json
-from typing import Optional
 
 # Import our invoice processing modules
 from ocr import process_invoice_ocr, extract_invoice_data
@@ -36,6 +37,21 @@ app.add_middleware(
 ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
+
+# ============================================================================
+# PYDANTIC MODELS
+# ============================================================================
+
+class EmailVerificationRequest(BaseModel):
+    subject: str = ""
+    body: str = ""
+    attachment_filename: Optional[str] = None
+    emailData: Optional[dict] = None
+
+
+# ============================================================================
+# ENDPOINTS
+# ============================================================================
 
 @app.get("/")
 async def root():
@@ -67,24 +83,6 @@ async def health_check():
 async def process_invoice(file: UploadFile = File(...)):
     """
     Process an invoice file (PDF or image) and return enhanced JSON data.
-    
-    Args:
-        file: Upload file (PDF, JPG, PNG, TIFF, BMP)
-    
-    Returns:
-        JSON: Enhanced invoice data with amounts converted to INR
-    
-    Example Response:
-        {
-            "success": true,
-            "data": {
-                "invoice_number": {"value": "INV-001", "confidence": 0.95},
-                "vendor_name": {"value": "ACME Corp", "confidence": 0.9},
-                "total_amount": {"value": 58349.04, "confidence": 0.95},
-                ...
-            },
-            "message": "Invoice processed successfully"
-        }
     """
     
     # Validate file
@@ -181,8 +179,6 @@ async def process_invoice(file: UploadFile = File(...)):
 async def process_invoice_raw(file: UploadFile = File(...)):
     """
     Process invoice and return both OCR and enhanced data.
-    
-    Returns both raw OCR data and AI-enhanced data for comparison.
     """
     
     if not file or not file.filename:
@@ -234,62 +230,39 @@ async def process_invoice_raw(file: UploadFile = File(...)):
 
 
 @app.post("/verify-invoice-email")
-async def verify_invoice_email(
-    subject: str,
-    body: str,
-    attachment_filename: Optional[str] = None
-):
+async def verify_invoice_email(request: EmailVerificationRequest):
     """
     Verify if an email contains invoice-based data using AI classification.
     
     Args:
-        subject: Email subject line
-        body: Email body text
-        attachment_filename: Optional filename of attachment
+        request: EmailVerificationRequest with subject, body, attachment_filename, emailData
     
     Returns:
         JSON response indicating if the email contains invoice data
-    
-    Example Request:
-        POST /verify-invoice-email
-        {
-            "subject": "Your Invoice for October Services",
-            "body": "Please find attached the invoice for $500.",
-            "attachment_filename": "invoice_123.pdf"
-        }
-    
-    Example Response:
-        {
-            "success": true,
-            "is_invoice": true,
-            "confidence": "high",
-            "message": "Email contains invoice-based data",
-            "details": {
-                "subject": "Your Invoice for October Services",
-                "has_attachment": true,
-                "attachment_name": "invoice_123.pdf"
-            }
-        }
     """
     
     try:
         # Validate inputs
-        if not subject and not body:
+        if not request.subject and not request.body:
             raise HTTPException(
                 status_code=400,
                 detail="Either subject or body must be provided"
             )
         
         # Classify email
-        print(f"📧 Verifying email: Subject='{subject[:50]}...'")
-        is_invoice = classify_email_as_invoice(subject, body, attachment_filename)
+        print(f"📧 Verifying email: Subject='{request.subject[:50]}...'")
+        is_invoice = classify_email_as_invoice(
+            request.subject, 
+            request.body, 
+            request.attachment_filename
+        )
         
         # Determine confidence based on multiple factors
         confidence = "high"
-        if attachment_filename:
+        if request.attachment_filename:
             # Check if attachment name suggests invoice
             invoice_keywords = ['invoice', 'bill', 'receipt', 'payment', 'statement']
-            if any(keyword in attachment_filename.lower() for keyword in invoice_keywords):
+            if any(keyword in request.attachment_filename.lower() for keyword in invoice_keywords):
                 confidence = "very_high"
         
         response_data = {
@@ -298,10 +271,10 @@ async def verify_invoice_email(
             "confidence": confidence if is_invoice else "n/a",
             "message": "Email contains invoice-based data" if is_invoice else "Email does not contain invoice data",
             "details": {
-                "subject": subject,
-                "body_length": len(body),
-                "has_attachment": attachment_filename is not None,
-                "attachment_name": attachment_filename
+                "subject": request.subject,
+                "body_length": len(request.body),
+                "has_attachment": request.attachment_filename is not None,
+                "attachment_name": request.attachment_filename
             }
         }
         

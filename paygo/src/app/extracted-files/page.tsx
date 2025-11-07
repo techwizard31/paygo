@@ -15,7 +15,6 @@ import {
   File,
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
-import toast, { Toaster } from "react-hot-toast"
 
 interface ExtractedDataItem {
   value: string;
@@ -56,9 +55,6 @@ export default function FileExtractor() {
       // Extract the 'data' property from the response
       const data = result.data || result
       setExtractedData(data)
-      
-      // Check due date and show toast notification if within 3 days
-      checkDueDate(data)
 
       // Save to database after successful extraction
       await saveToDatabase(data)
@@ -76,16 +72,6 @@ export default function FileExtractor() {
       const userUuid = localStorage.getItem('user_uuid')
       
       if (!userUuid) {
-        toast.error('User UUID not found in local storage. Please log in again.', {
-          duration: 5000,
-          position: "top-center",
-          style: {
-            background: "#ef4444",
-            color: "#fff",
-            padding: "16px",
-            borderRadius: "8px",
-          },
-        })
         console.error('user_uuid not found in localStorage')
         return
       }
@@ -121,94 +107,8 @@ export default function FileExtractor() {
 
       const savedMail = await dbResponse.json()
       console.log('[FileExtractor] - Successfully saved to database:', savedMail)
-
-      toast.success('Invoice data saved to database successfully!', {
-        duration: 4000,
-        position: "top-center",
-        style: {
-          background: "#10b981",
-          color: "#fff",
-          padding: "16px",
-          borderRadius: "8px",
-        },
-        icon: "✓",
-      })
     } catch (err) {
       console.error('[FileExtractor] - Error saving to database:', err)
-      toast.error(
-        `Failed to save to database: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        {
-          duration: 6000,
-          position: "top-center",
-          style: {
-            background: "#ef4444",
-            color: "#fff",
-            padding: "16px",
-            borderRadius: "8px",
-          },
-        }
-      )
-    }
-  }
-
-  const checkDueDate = (data: ExtractedData) => {
-    if (data.due_date && data.due_date.value && data.due_date.value !== "nil") {
-      try {
-        const dueDate = new Date(data.due_date.value)
-        const today = new Date()
-        const diffTime = dueDate.getTime() - today.getTime()
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-        if (diffDays >= 0 && diffDays <= 3) {
-          toast.error(
-            `⚠️ Payment Due Soon! Due date is in ${diffDays} ${diffDays === 1 ? "day" : "days"}. Please pay on time!`,
-            {
-              duration: 8000,
-              position: "top-center",
-              style: {
-                background: "#ef4444",
-                color: "#fff",
-                fontWeight: "bold",
-                padding: "16px",
-                borderRadius: "8px",
-              },
-              icon: "🔔",
-            }
-          )
-        } else if (diffDays < 0) {
-          toast.error(
-            `⚠️ Payment Overdue! The due date has passed ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? "day" : "days"} ago!`,
-            {
-              duration: 8000,
-              position: "top-center",
-              style: {
-                background: "#dc2626",
-                color: "#fff",
-                fontWeight: "bold",
-                padding: "16px",
-                borderRadius: "8px",
-              },
-              icon: "❌",
-            }
-          )
-        } else {
-          toast.success(
-            `✓ Payment due in ${diffDays} days. You have time!`,
-            {
-              duration: 4000,
-              position: "top-center",
-              style: {
-                background: "#10b981",
-                color: "#fff",
-                padding: "16px",
-                borderRadius: "8px",
-              },
-            }
-          )
-        }
-      } catch (error) {
-        console.error("Error parsing due date:", error)
-      }
     }
   }
 
@@ -306,9 +206,6 @@ export default function FileExtractor() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 md:p-8">
-      {/* Toast Container */}
-      <Toaster />
-      
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Invoice Data Extractor</h1>

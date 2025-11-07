@@ -41,11 +41,5 @@ export const navigations: Navigation[] = [
     href: "/extracted-files",
 
   },
-   {
-    icon: Layout,
-    name: "Balance Sheet",
-    href: "/tally",
-
-  },
 
 ];

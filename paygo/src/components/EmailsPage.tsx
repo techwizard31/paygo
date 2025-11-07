@@ -24,6 +24,8 @@ interface Email {
   hasAttachments: boolean;
   attachments: EmailAttachment[];
   labels: string[];
+  isInvoice?: boolean;
+  invoiceConfidence?: number;
 }
 
 interface EmailsResponse {
@@ -74,6 +76,9 @@ const EmailsContent: React.FC = () => {
         setIsAuthenticated(data.isAuthenticated);
         if (data.isAuthenticated && data.userEmail) {
           setUserEmail(data.userEmail);
+          if (data.profile_uuid) {
+            localStorage.setItem('user_uuid', data.profile_uuid);
+          }
           console.log('[EmailsPage] User is authenticated, fetching emails...');
           fetchEmails();
         } else {
@@ -206,7 +211,7 @@ const EmailsContent: React.FC = () => {
         setLoading(true);
       }
       setError(null);
-
+      
       console.log('[EmailsPage] Fetching emails...');
       const response = await fetch('/api/emails', {
         credentials: 'include',

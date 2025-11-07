@@ -3,6 +3,8 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import fs from 'fs';
 import path from 'path';
+import { getDb } from '@/lib/mongodb';
+import { randomUUID } from 'crypto';
 
 // Firebase removed temporarily - using local file system for attachments
 // import { storage, uploadFile } from '../components/firebase'; 
@@ -14,7 +16,7 @@ import path from 'path';
 const STORAGE_FILE = path.join(process.cwd(), '.dev_storage.json');
 
 interface DevStorage {
-  sessions: Record<string, { userId: string; email: string }>;
+  sessions: Record<string, { userId: string; email: string; profile_uuid?: string }>;
   tokens: Record<string, any>;
 }
 
@@ -53,7 +55,7 @@ const oauth2Client = new OAuth2Client(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-interface Session { userId: string; email: string; }
+interface Session { userId: string; email: string; profile_uuid?: string; }
 
 /** Gets the session from the cookie and storage */
 const getSession = (request: NextRequest): Session | null => {
@@ -85,8 +87,11 @@ interface EmailAttachment {
 }
 interface ProcessedEmail {
   id: string; threadId: string; subject: string; from: string; fromEmail: string;
+  to: string;
   date: string; snippet: string; body: string; isRead: boolean;
   hasAttachments: boolean; attachments: EmailAttachment[]; labels: string[];
+  isInvoice?: boolean;
+  invoiceConfidence?: number;
 }
 
 const decodeBase64Url = (data: string): string => {
@@ -206,6 +211,7 @@ const processEmail = async (
     subject: getHeader(headers, 'Subject'),
     from: fromName,
     fromEmail,
+    to: getHeader(headers, 'To'),
     date: getHeader(headers, 'Date'),
     snippet: message.snippet,
     body: getEmailBody(payload),
@@ -242,9 +248,25 @@ export async function authGoogle(request: NextRequest) {
 
     const userId = payload.sub;
     const userEmail = email || payload.email!;
+
+    // Create or get profile
+    const db = await getDb();
+    const profiles = db.collection('profiles');
+    let profile = await profiles.findOne({ google_id: userId });
+    if (!profile) {
+      const uuid = randomUUID();
+      await profiles.insertOne({
+        uuid,
+        google_id: userId,
+        email: userEmail,
+        created_at: new Date(),
+      });
+      profile = await profiles.findOne({ uuid });
+    }
+
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
-    storage.sessions[sessionId] = { userId, email: userEmail };
+    storage.sessions[sessionId] = { userId, email: userEmail, profile_uuid: profile!.uuid };
     saveStorage(storage);
     console.log('[authGoogle] Session created:', sessionId, 'for user:', userId);
 
@@ -337,8 +359,37 @@ export async function authGoogleCallback(request: NextRequest) {
  * GET /api/auth/status
  */
 export async function authStatus(request: NextRequest) {
-  const session = getSession(request); // getSession loads fresh storage
+  let session = getSession(request); // getSession loads fresh storage
   const storage = storageCache; // Use the cache populated by getSession
+
+  if (session && !session.profile_uuid) {
+    console.log('[authStatus] No profile_uuid in session, creating...');
+    try {
+      const db = await getDb();
+      const profiles = db.collection('profiles');
+      let profile = await profiles.findOne({ google_id: session.userId });
+      if (!profile) {
+        const uuid = randomUUID();
+        await profiles.insertOne({
+          uuid,
+          google_id: session.userId,
+          email: session.email,
+          created_at: new Date(),
+        });
+        profile = await profiles.findOne({ uuid });
+      }
+      // Update storage
+      const sessionId = request.cookies.get('session_id')?.value;
+      if (sessionId && storage.sessions[sessionId]) {
+        storage.sessions[sessionId].profile_uuid = profile!.uuid;
+        saveStorage(storage);
+      }
+      session.profile_uuid = profile!.uuid;
+    } catch (error) {
+      console.error('[authStatus] Error creating profile:', error);
+    }
+  }
+
   const hasTokens = session ? !!storage.tokens[session.userId] : false;
 
   console.log(`[authStatus] Session: ${session?.userId || 'none'} | Has Tokens: ${hasTokens}`);
@@ -346,6 +397,7 @@ export async function authStatus(request: NextRequest) {
   return NextResponse.json({
     isAuthenticated: hasTokens,
     userEmail: session?.email || null,
+    profile_uuid: session?.profile_uuid || null,
   });
 }
 
@@ -387,11 +439,37 @@ export async function authDisconnect(request: NextRequest) {
 export async function getEmails(request: NextRequest) {
   try {
     const tokens = getTokens(request);
-    const session = getSession(request); // Get session to access userId
+    let session = getSession(request); // Get session to access userId
     
     if (!tokens || !session) {
       console.log('[getEmails] Unauthorized: No tokens or session found');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    if (!session.profile_uuid) {
+      console.log('[getEmails] No profile_uuid in session, creating...');
+      const db = await getDb();
+      const profiles = db.collection('profiles');
+      let profile = await profiles.findOne({ google_id: session.userId });
+      if (!profile) {
+        const uuid = randomUUID();
+        await profiles.insertOne({
+          uuid,
+          google_id: session.userId,
+          email: session.email,
+          created_at: new Date(),
+        });
+        profile = await profiles.findOne({ uuid });
+      }
+      // Update storage
+      loadStorage(); // reload to fresh
+      const storage = storageCache;
+      const sessionId = request.cookies.get('session_id')?.value;
+      if (sessionId && storage.sessions[sessionId]) {
+        storage.sessions[sessionId].profile_uuid = profile!.uuid;
+        saveStorage(storage);
+      }
+      session.profile_uuid = profile!.uuid;
     }
 
     oauth2Client.setCredentials(tokens);
@@ -418,21 +496,25 @@ export async function getEmails(request: NextRequest) {
     );
     
     // --- MODIFIED SECTION ---
-    // Process emails one by one, awaiting attachment uploads
-    console.log(`[getEmails] Processing ${emailDetails.length} emails and uploading attachments...`);
+    // Process emails one by one, awaiting attachment uploads AND invoice verification
+    console.log(`[getEmails] Processing ${emailDetails.length} emails, uploading attachments, and verifying invoices...`);
     const processedEmails = await Promise.all(
       emailDetails.map(email => 
-        processEmail(gmail, session.userId, email.data)
+        processEmailWithVerification(gmail, session.userId, session.profile_uuid!, email.data)
       )
     );
     
     const unreadCount = processedEmails.filter(email => !email.isRead).length;
+    const invoiceCount = processedEmails.filter(email => email.isInvoice).length;
 
     console.log('[getEmails] Returning', processedEmails.length, 'emails with attachment URLs');
+    console.log(`[getEmails] Found ${invoiceCount} invoice emails`);
+    
     return NextResponse.json({
       emails: processedEmails,
       total: listResponse.data.resultSizeEstimate || processedEmails.length,
       unreadCount,
+      invoiceCount,
     });
 
   } catch (error: any) {
@@ -444,6 +526,111 @@ export async function getEmails(request: NextRequest) {
   }
 }
 
+// New helper function to process email with verification
+async function processEmailWithVerification(gmail: any, userId: string, profileUuid: string, emailData: any) {
+  // First, process the email normally (get attachments, etc.)
+  const processedEmail = await processEmail(gmail, userId, emailData);
+  
+  // Extract email subject and body for verification
+  const headers = emailData.payload?.headers || [];
+  const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '';
+  const body = extractEmailBody(emailData.payload);
+  
+  // Get first attachment filename if exists
+  const attachmentFilename = processedEmail.attachments?.[0]?.filename || null;
+  
+  try {
+    // Call the verification API route
+    console.log(`[processEmailWithVerification] Verifying email: ${subject.substring(0, 50)}...`);
+    const verificationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/verify-invoice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-uuid': profileUuid,
+      },
+      body: JSON.stringify({
+        subject,
+        body,
+        attachment_filename: attachmentFilename,
+        emailData: {
+          id: processedEmail.id,
+          threadId: processedEmail.threadId,
+          from: `${processedEmail.from} <${processedEmail.fromEmail}>`,
+          to: processedEmail.to || '',
+          snippet: processedEmail.snippet || '',
+          date: processedEmail.date,
+          isRead: processedEmail.isRead || false,
+          hasAttachments: processedEmail.hasAttachments || false,
+          attachments: processedEmail.attachments || [],
+        },
+      }),
+    });
+
+    if (verificationResponse.ok) {
+      const verificationData = await verificationResponse.json();
+      
+      // Add invoice verification data to the processed email
+      return {
+        ...processedEmail,
+        isInvoice: verificationData.is_invoice || false,
+        invoiceConfidence: verificationData.confidence || null,
+      };
+    } else {
+      console.error('[processEmailWithVerification] Verification failed:', await verificationResponse.text());
+      return {
+        ...processedEmail,
+        isInvoice: false,
+        invoiceConfidence: null,
+      };
+    }
+  } catch (error) {
+    console.error('[processEmailWithVerification] Error verifying email:', error);
+    // If verification fails, return email without invoice flag
+    return {
+      ...processedEmail,
+      isInvoice: false,
+      invoiceConfidence: null,
+    };
+  }
+}
+
+// Helper function to extract email body text
+function extractEmailBody(payload: any): string {
+  if (!payload) return '';
+  
+  // Check if payload has body data
+  if (payload.body?.data) {
+    return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+  }
+  
+  // Check parts for text/plain or text/html
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        return Buffer.from(part.body.data, 'base64').toString('utf-8');
+      }
+    }
+    
+    // Fallback to HTML if plain text not found
+    for (const part of payload.parts) {
+      if (part.mimeType === 'text/html' && part.body?.data) {
+        const html = Buffer.from(part.body.data, 'base64').toString('utf-8');
+        // Strip HTML tags (basic cleanup)
+        return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    }
+    
+    // Check nested parts
+    for (const part of payload.parts) {
+      if (part.parts) {
+        const nestedBody = extractEmailBody(part);
+        if (nestedBody) return nestedBody;
+      }
+    }
+  }
+  
+  return '';
+}
 
 /**
  * POST /api/emails/[id]/read
